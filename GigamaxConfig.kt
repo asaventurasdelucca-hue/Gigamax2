@@ -14,7 +14,11 @@ class GigamaxConfigData {
     var maxGiantsPerLevel: Int = 3
     var minDistance: Int = 40
     var maxDistance: Int = 80
-    var scale: Float = 3.0f
+    var scale: Float = 4.0f
+    /** Como o gigante aparece nas mensagens e na barra. {species} vira o nome do Pokemon. */
+    var nameFormat: String = "Dynamax {species}"
+    /** Escala do clone usado nas batalhas (quase invisivel, para nao aparecer um segundo Pokemon). */
+    var cloneScale: Float = 0.01f
     var pokemonLevel: Int = 60
     /** Tempo que o gigante fica no mundo antes de sumir. */
     var lifetimeMinutes: Int = 15

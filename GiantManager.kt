@@ -2,6 +2,7 @@ package com.gigamax
 
 import com.cobblemon.mod.common.api.pokemon.PokemonProperties
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
+import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
@@ -40,6 +41,10 @@ object GiantManager {
 
     fun isGiant(uuid: UUID) = giants.containsKey(uuid)
 
+    /** Nome exibido (ex: "Dynamax Charizard"), configuravel em nameFormat. */
+    fun displayName(species: String): String =
+        GigamaxConfig.data.nameFormat.replace("{species}", species.replaceFirstChar { it.uppercase() })
+
     /** Cria o gigante. O registro na lista acontece no evento de entrada no mundo. */
     fun spawn(level: ServerLevel, species: String, pos: Vec3, scale: Float): PokemonEntity {
         val props = PokemonProperties.parse("$species level=${GigamaxConfig.data.pokemonLevel}")
@@ -64,9 +69,9 @@ object GiantManager {
 
     private fun defeat(g: Giant) {
         val server = g.entity.server ?: return
-        val name = g.entity.pokemon.species.name
+        val name = displayName(g.entity.pokemon.species.name)
         server.playerList.broadcastSystemMessage(
-            Component.literal("O $name gigante foi derrotado! ${g.contributors.size} treinador(es) participaram."),
+            Component.literal("$name foi derrotado! ${g.contributors.size} treinador(es) participaram."),
             false
         )
         for (uuid in g.contributors.keys) {
@@ -90,20 +95,30 @@ object GiantManager {
         val level = event.level as? ServerLevel ?: return
         if (!entity.tags.contains(TAG)) return
 
-        val name = entity.pokemon.species.name
+        val name = displayName(entity.pokemon.species.name)
         val bar = ServerBossEvent(
-            Component.literal("Gigante: $name"),
-            BossEvent.BossBarColor.PURPLE,
+            Component.literal(name).withStyle(ChatFormatting.RED),
+            BossEvent.BossBarColor.RED,
             BossEvent.BossBarOverlay.PROGRESS
         )
         bar.progress = 1.0f
+        // o gigante nao pode ser morto por dano normal; so cai pela vida compartilhada
+        entity.isInvulnerable = true
+        // brilho vermelho (cor do time) no estilo Dynamax
         entity.setGlowingTag(true)
+        val sb = level.server.scoreboard
+        val team = sb.getPlayerTeam("gigamax") ?: sb.addPlayerTeam("gigamax")
+        team.color = ChatFormatting.RED
+        sb.addPlayerToTeam(entity.scoreboardName, team)
         giants[entity.uuid] = Giant(entity, bar, level.gameTime)
     }
 
     fun onLeave(event: EntityLeaveLevelEvent) {
         val giant = giants.remove(event.entity.uuid) ?: return
         giant.bar.removeAllPlayers()
+        val sb = event.entity.server?.scoreboard
+        val team = sb?.getPlayerTeam("gigamax")
+        if (sb != null && team != null) sb.removePlayerFromTeam(event.entity.scoreboardName, team)
     }
 
     fun onServerTick(event: ServerTickEvent.Post) {
@@ -162,7 +177,7 @@ object GiantManager {
             val species = cfg.species.random()
             spawn(level, species, Vec3(top.x + 0.5, top.y.toDouble(), top.z + 0.5), cfg.scale)
             server.playerList.broadcastSystemMessage(
-                Component.literal("Um ${species.replaceFirstChar { it.uppercase() }} gigante apareceu perto de ${player.name.string}! Clique com a mao vazia nele para lutar."),
+                Component.literal("${displayName(species)} apareceu perto de ${player.name.string}! Clique com a mao vazia nele para lutar."),
                 false
             )
         }

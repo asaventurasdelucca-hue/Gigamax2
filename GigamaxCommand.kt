@@ -44,7 +44,7 @@ object GigamaxCommand {
     private fun spawn(ctx: CommandContext<CommandSourceStack>, species: String, scale: Float): Int {
         val src = ctx.source
         GiantManager.spawn(src.level, species, src.position, scale)
-        src.sendSuccess({ Component.literal("Um $species gigante (x$scale) apareceu!") }, true)
+        src.sendSuccess({ Component.literal("${GiantManager.displayName(species)} (x$scale) apareceu!") }, true)
         return 1
     }
 }

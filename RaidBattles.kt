@@ -65,7 +65,8 @@ object RaidBattles {
         val species = giant.pokemon.species.name
         val props = PokemonProperties.parse("$species level=${giant.pokemon.level} uncatchable=yes")
         val clone = props.createEntity(level)
-        clone.pokemon.scaleModifier = giant.pokemon.scaleModifier
+        // minusculo: o Cobblemon desenha o modelo mesmo "invisivel", entao encolhemos o clone
+        clone.pokemon.scaleModifier = GigamaxConfig.data.cloneScale
         clone.addTag(CLONE_TAG)
         clone.isInvisible = true
         clone.isInvulnerable = true
