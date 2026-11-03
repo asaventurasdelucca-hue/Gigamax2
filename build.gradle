@@ -11,6 +11,17 @@ base { archivesName = mod_id }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 kotlin { jvmToolchain(21) }
 
+// Layout "plano": os arquivos .kt e o neoforge.mods.toml ficam na RAIZ do repositorio
+// (facilita subir pelo celular, sem precisar criar pastas).
+sourceSets {
+    main {
+        kotlin {
+            srcDir('.')
+            include('*.kt')
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     maven { url = 'https://artefacts.cobblemon.com/releases' }
@@ -34,6 +45,7 @@ dependencies {
 }
 
 processResources {
+    from('neoforge.mods.toml') { into 'META-INF' }
     def props = [version: mod_version]
     inputs.properties props
     filesMatching('META-INF/neoforge.mods.toml') { expand props }
