@@ -1,0 +1,40 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.0.21'
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+version = mod_version
+group = 'com.gigamax'
+base { archivesName = mod_id }
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+kotlin { jvmToolchain(21) }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://artefacts.cobblemon.com/releases' }
+    maven { url = 'https://maven.impactdev.net/repository/development/' }
+    maven { url = 'https://thedarkcolour.github.io/KotlinForForge/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+neoForge {
+    version = neo_version
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+    }
+    mods { "${mod_id}" { sourceSet sourceSets.main } }
+}
+
+dependencies {
+    implementation "thedarkcolour:kotlinforforge-neoforge:${kff_version}"
+    implementation "com.cobblemon:neoforge:${cobblemon_version}"
+}
+
+processResources {
+    def props = [version: mod_version]
+    inputs.properties props
+    filesMatching('META-INF/neoforge.mods.toml') { expand props }
+}
