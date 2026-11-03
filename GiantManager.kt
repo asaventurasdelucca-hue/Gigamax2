@@ -5,15 +5,12 @@ import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerBossEvent
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.BossEvent
-import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
@@ -29,9 +26,10 @@ import kotlin.math.sin
  */
 object GiantManager {
     const val TAG = "gigamax"
+    private const val STAR_PREFIX = "gigamax_star_"
     private const val BAR_RANGE = 64.0
 
-    class Giant(val entity: PokemonEntity, val bar: ServerBossEvent, val spawnedAt: Long) {
+    class Giant(val entity: PokemonEntity, val bar: ServerBossEvent, val spawnedAt: Long, val tier: TierData) {
         var hp: Double = 1.0
         /** jogador -> dano total causado (em fracao da vida do gigante) */
         val contributors = LinkedHashMap<UUID, Double>()
@@ -41,16 +39,22 @@ object GiantManager {
 
     fun isGiant(uuid: UUID) = giants.containsKey(uuid)
 
-    /** Nome exibido (ex: "Dynamax Charizard"), configuravel em nameFormat. */
-    fun displayName(species: String): String =
-        GigamaxConfig.data.nameFormat.replace("{species}", species.replaceFirstChar { it.uppercase() })
+    /** Nome exibido (ex: "★★★ Dynamax Charizard"), configuravel em nameFormat. */
+    fun displayName(species: String, stars: Int): String =
+        GigamaxConfig.data.nameFormat
+            .replace("{stars}", "★".repeat(stars))
+            .replace("{species}", species.replaceFirstChar { it.uppercase() })
+
+    /** Quantas barras de vida o gigante tem (depende da dificuldade). */
+    fun battlesToKill(giantUuid: UUID): Int = giants[giantUuid]?.tier?.battlesToKill ?: 1
 
     /** Cria o gigante. O registro na lista acontece no evento de entrada no mundo. */
-    fun spawn(level: ServerLevel, species: String, pos: Vec3, scale: Float): PokemonEntity {
-        val props = PokemonProperties.parse("$species level=${GigamaxConfig.data.pokemonLevel}")
+    fun spawn(level: ServerLevel, species: String, pos: Vec3, tier: TierData): PokemonEntity {
+        val props = PokemonProperties.parse("$species level=${tier.pokemonLevel}")
         val entity = props.createEntity(level)
-        entity.pokemon.scaleModifier = scale
+        entity.pokemon.scaleModifier = tier.scale
         entity.addTag(TAG)
+        entity.addTag("$STAR_PREFIX${tier.stars}")
         entity.setPos(pos.x, pos.y, pos.z)
         level.addFreshEntity(entity)
         return entity
@@ -69,25 +73,26 @@ object GiantManager {
 
     private fun defeat(g: Giant) {
         val server = g.entity.server ?: return
-        val name = displayName(g.entity.pokemon.species.name)
+        val cfg = GigamaxConfig.data
+        val species = g.entity.pokemon.species.name
+        val name = displayName(species, g.tier.stars)
         server.playerList.broadcastSystemMessage(
             Component.literal("$name foi derrotado! ${g.contributors.size} treinador(es) participaram."),
             false
         )
-        for (uuid in g.contributors.keys) {
+
+        val total = g.contributors.values.sum().coerceAtLeast(0.0001)
+        val mvp = g.contributors.maxByOrNull { it.value }?.key
+        val now = (g.entity.level() as? ServerLevel)?.gameTime ?: 0L
+        for ((uuid, dmg) in g.contributors) {
             val p = server.playerList.getPlayer(uuid) ?: continue
-            giveRewards(p)
+            val points = Math.round(dmg / total * 100).toInt()
+            var attempts = 1 + points / cfg.pointsPerExtraAttempt.coerceAtLeast(1)
+            if (uuid == mvp) attempts += 1
+            attempts = attempts.coerceIn(1, g.tier.maxAttempts)
+            RaidRewards.grant(p, g.tier, species, points, attempts, uuid == mvp, now)
         }
         g.entity.discard()
-    }
-
-    private fun giveRewards(player: ServerPlayer) {
-        for ((id, count) in GigamaxConfig.data.rewards) {
-            val item = BuiltInRegistries.ITEM.getOptional(ResourceLocation.parse(id)).orElse(null) ?: continue
-            val stack = ItemStack(item, count)
-            if (!player.addItem(stack)) player.drop(stack, false)
-        }
-        player.sendSystemMessage(Component.literal("Recompensa do gigante recebida!"))
     }
 
     fun onJoin(event: EntityJoinLevelEvent) {
@@ -95,7 +100,10 @@ object GiantManager {
         val level = event.level as? ServerLevel ?: return
         if (!entity.tags.contains(TAG)) return
 
-        val name = displayName(entity.pokemon.species.name)
+        val stars = entity.tags.firstOrNull { it.startsWith(STAR_PREFIX) }
+            ?.removePrefix(STAR_PREFIX)?.toIntOrNull() ?: 3
+        val tier = GigamaxConfig.tier(stars)
+        val name = displayName(entity.pokemon.species.name, tier.stars)
         val bar = ServerBossEvent(
             Component.literal(name).withStyle(ChatFormatting.RED),
             BossEvent.BossBarColor.RED,
@@ -110,7 +118,7 @@ object GiantManager {
         val team = sb.getPlayerTeam("gigamax") ?: sb.addPlayerTeam("gigamax")
         team.color = ChatFormatting.RED
         sb.addPlayerToTeam(entity.scoreboardName, team)
-        giants[entity.uuid] = Giant(entity, bar, level.gameTime)
+        giants[entity.uuid] = Giant(entity, bar, level.gameTime, tier)
     }
 
     fun onLeave(event: EntityLeaveLevelEvent) {
@@ -157,7 +165,7 @@ object GiantManager {
 
     private fun naturalSpawn(server: MinecraftServer) {
         val cfg = GigamaxConfig.data
-        if (!cfg.enabled || cfg.species.isEmpty()) return
+        if (!cfg.enabled) return
 
         for (player in server.playerList.players) {
             val level = player.serverLevel()
@@ -174,10 +182,12 @@ object GiantManager {
             val top = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bp)
             if (!level.getFluidState(top.below()).isEmpty) continue
 
-            val species = cfg.species.random()
-            spawn(level, species, Vec3(top.x + 0.5, top.y.toDouble(), top.z + 0.5), cfg.scale)
+            val tier = GigamaxConfig.rollTier(level.random)
+            if (tier.species.isEmpty()) continue
+            val species = tier.species.random()
+            spawn(level, species, Vec3(top.x + 0.5, top.y.toDouble(), top.z + 0.5), tier)
             server.playerList.broadcastSystemMessage(
-                Component.literal("${displayName(species)} apareceu perto de ${player.name.string}! Clique com a mao vazia nele para lutar."),
+                Component.literal("${displayName(species, tier.stars)} apareceu perto de ${player.name.string}! Clique com a mao vazia nele para lutar."),
                 false
             )
         }

@@ -100,7 +100,7 @@ object RaidBattles {
 
         val server = clone.server ?: return
         val player = server.playerList.getPlayer(link.playerUuid) ?: return
-        val fraction = dealt / GigamaxConfig.data.battlesToKill.coerceAtLeast(1)
+        val fraction = dealt / GiantManager.battlesToKill(link.giantUuid).coerceAtLeast(1)
         val remaining = GiantManager.applyDamage(link.giantUuid, player, fraction) ?: return
 
         if (remaining > 0.0) {
