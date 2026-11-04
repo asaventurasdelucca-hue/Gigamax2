@@ -94,6 +94,11 @@ object RaidBattles {
         startBattle(player, giant)
     }
 
+    /** Jogador saiu do jogo: cancela a proxima luta automatica agendada dele. */
+    fun onLogout(playerUuid: UUID) {
+        pending.removeAll { it.playerUuid == playerUuid }
+    }
+
     /** Remove clones "orfaos" (ex: sobraram de uma sessao anterior do servidor). */
     fun onJoin(event: EntityJoinLevelEvent) {
         val entity = event.entity as? PokemonEntity ?: return
@@ -104,9 +109,12 @@ object RaidBattles {
 
     private fun startBattle(player: ServerPlayer, giant: PokemonEntity) {
         val level = giant.level() as? ServerLevel ?: return
+        // ja esta numa luta do Gigamax (ou a proxima ja esta agendada): ignora cliques repetidos
+        if (links.values.any { it.playerUuid == player.uuid } || pending.any { it.playerUuid == player.uuid }) return
 
-        val species = giant.pokemon.species.name
-        val props = PokemonProperties.parse("$species level=${giant.pokemon.level} uncatchable=yes")
+        // IMPORTANTE: usar o id (ex: "tapubulu"), nao o nome ("Tapu Bulu"), senao o Cobblemon sorteia outro Pokemon
+        val speciesId = giant.pokemon.species.showdownId()
+        val props = PokemonProperties.parse("$speciesId level=${giant.pokemon.level} uncatchable=yes")
         val clone = props.createEntity(level)
         // minusculo: o Cobblemon desenha o modelo mesmo "invisivel", entao encolhemos o clone
         clone.pokemon.scaleModifier = GigamaxConfig.data.cloneScale

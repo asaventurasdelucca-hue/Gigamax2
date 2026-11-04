@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="gigamax"
-version="0.5.0"
+version="0.5.1"
 displayName="Gigamax"
 description='Pokemon gigantes (Dynamax) e raids em grupo no mundo aberto, para Cobblemon.'
 

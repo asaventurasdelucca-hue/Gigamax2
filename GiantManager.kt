@@ -76,8 +76,9 @@ object GiantManager {
     private fun defeat(g: Giant) {
         val server = g.entity.server ?: return
         val cfg = GigamaxConfig.data
-        val species = g.entity.pokemon.species.name
-        val name = displayName(species, g.tier.stars)
+        val speciesName = g.entity.pokemon.species.name
+        val speciesId = g.entity.pokemon.species.showdownId()
+        val name = displayName(speciesName, g.tier.stars)
         server.playerList.broadcastSystemMessage(
             Component.literal("$name foi derrotado! ${g.contributors.size} treinador(es) participaram."),
             false
@@ -92,7 +93,7 @@ object GiantManager {
             var attempts = 1 + points / cfg.pointsPerExtraAttempt.coerceAtLeast(1)
             if (uuid == mvp) attempts += 1
             attempts = attempts.coerceIn(1, g.tier.maxAttempts)
-            RaidRewards.grant(p, g.tier, species, points, attempts, uuid == mvp, now)
+            RaidRewards.grant(p, g.tier, speciesId, speciesName, points, attempts, uuid == mvp, now)
         }
         g.entity.discard()
     }

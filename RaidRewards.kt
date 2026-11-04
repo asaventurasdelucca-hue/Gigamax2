@@ -33,7 +33,7 @@ object RaidRewards {
     )
 
     private class Ticket(
-        val species: String, val level: Int, var attempts: Int, val chance: Double,
+        val species: String, val speciesName: String, val level: Int, var attempts: Int, val chance: Double,
         val points: Int, val stars: Int, val rewards: Map<String, Int>, val expiresAt: Long,
         val total: Int = attempts
     )
@@ -48,7 +48,7 @@ object RaidRewards {
         return Component.literal("[ABRIR CAPTURA]").withStyle(style)
     }
 
-    fun grant(player: ServerPlayer, tier: TierData, species: String, points: Int, attempts: Int, mvp: Boolean, gameTime: Long) {
+    fun grant(player: ServerPlayer, tier: TierData, species: String, speciesName: String, points: Int, attempts: Int, mvp: Boolean, gameTime: Long) {
         val cfg = GigamaxConfig.data
         giveItems(player, tier)
         val mvpText = if (mvp) " (MVP: +1 tentativa!)" else ""
@@ -63,7 +63,7 @@ object RaidRewards {
             return
         }
         tickets[player.uuid] = Ticket(
-            species, tier.pokemonLevel, attempts, tier.catchChance, points, tier.stars,
+            species, speciesName, tier.pokemonLevel, attempts, tier.catchChance, points, tier.stars,
             tier.rewards.toMap(), gameTime + cfg.captureWindowSeconds * 20L
         )
         player.sendSystemMessage(Component.literal("Janela de captura aberta! ").append(openButton()))
@@ -87,7 +87,7 @@ object RaidRewards {
             return null
         }
         return TicketInfo(
-            t.species, t.attempts, t.chance, t.points, t.stars, t.rewards,
+            t.speciesName, t.attempts, t.chance, t.points, t.stars, t.rewards,
             ((t.expiresAt - now) / 20L).coerceAtLeast(0L),
             t.total
         )
@@ -111,7 +111,7 @@ object RaidRewards {
                 Cobblemon.storage.getPC(player).add(pokemon)
             }
             player.server.playerList.broadcastSystemMessage(
-                Component.literal("${player.name.string} capturou um ${ticket.species.replaceFirstChar { it.uppercase() }} Dynamax!"),
+                Component.literal("${player.name.string} capturou um ${ticket.speciesName} Dynamax!"),
                 false
             )
             return Result.SUCCESS
