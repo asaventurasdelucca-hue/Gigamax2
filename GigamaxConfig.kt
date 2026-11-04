@@ -54,6 +54,10 @@ class GigamaxConfigData {
     var cloneScale: Float = 0.01f
 
     /** Pontos Dynamax = % do dano total do gigante que o jogador causou (0 a 100). */
+    /** Depois de derrubar uma "barra" do gigante, a proxima batalha comeca sozinha ate a vida dele zerar. */
+    var autoContinue: Boolean = true
+    var continueDelaySeconds: Int = 2
+
     var minPointsToCapture: Int = 5
     /** Cada X pontos Dynamax dao +1 tentativa de captura (alem da 1a). O jogador que mais causou dano ganha +1. */
     var pointsPerExtraAttempt: Int = 20

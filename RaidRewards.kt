@@ -28,12 +28,14 @@ object RaidRewards {
         val points: Int,
         val stars: Int,
         val rewards: Map<String, Int>,
-        val secondsLeft: Long
+        val secondsLeft: Long,
+        val totalAttempts: Int
     )
 
     private class Ticket(
         val species: String, val level: Int, var attempts: Int, val chance: Double,
-        val points: Int, val stars: Int, val rewards: Map<String, Int>, val expiresAt: Long
+        val points: Int, val stars: Int, val rewards: Map<String, Int>, val expiresAt: Long,
+        val total: Int = attempts
     )
 
     private val tickets = HashMap<UUID, Ticket>()
@@ -86,7 +88,8 @@ object RaidRewards {
         }
         return TicketInfo(
             t.species, t.attempts, t.chance, t.points, t.stars, t.rewards,
-            ((t.expiresAt - now) / 20L).coerceAtLeast(0L)
+            ((t.expiresAt - now) / 20L).coerceAtLeast(0L),
+            t.total
         )
     }
 

@@ -39,6 +39,8 @@ object GiantManager {
 
     fun isGiant(uuid: UUID) = giants.containsKey(uuid)
 
+    fun entityOf(uuid: UUID): PokemonEntity? = giants[uuid]?.entity
+
     /** Nome exibido (ex: "★★★ Dynamax Charizard"), configuravel em nameFormat. */
     fun displayName(species: String, stars: Int): String =
         GigamaxConfig.data.nameFormat
@@ -132,6 +134,7 @@ object GiantManager {
     fun onServerTick(event: ServerTickEvent.Post) {
         val server = event.server
         val time = server.overworld().gameTime
+        RaidBattles.tick(server)
         if (time % 10L == 0L) tickGiants(time)
         if (time % 100L == 0L) RaidBattles.sweep()
         val interval = (GigamaxConfig.data.intervalSeconds.coerceAtLeast(5) * 20L)

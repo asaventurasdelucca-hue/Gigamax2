@@ -8,6 +8,7 @@ import com.cobblemon.mod.common.battles.BattleRegistry
 import com.cobblemon.mod.common.battles.SuccessfulBattleStart
 import com.cobblemon.mod.common.entity.pokemon.PokemonEntity
 import net.minecraft.network.chat.Component
+import net.minecraft.server.MinecraftServer
 import org.apache.logging.log4j.LogManager
 import net.neoforged.neoforge.server.ServerLifecycleHooks
 import net.minecraft.server.level.ServerLevel
@@ -31,6 +32,26 @@ object RaidBattles {
     private val LOG = LogManager.getLogger("Gigamax")
 
     private class Link(val giantUuid: UUID, val clone: PokemonEntity, val playerUuid: UUID)
+
+    /** Proxima batalha automatica (jogador continua lutando ate a vida do gigante zerar). */
+    private class Pending(val playerUuid: UUID, val giantUuid: UUID, var ticksLeft: Int)
+
+    private val pending = ArrayList<Pending>()
+
+    fun tick(server: MinecraftServer) {
+        if (pending.isEmpty()) return
+        val iter = pending.iterator()
+        while (iter.hasNext()) {
+            val p = iter.next()
+            p.ticksLeft -= 1
+            if (p.ticksLeft > 0) continue
+            iter.remove()
+            val player = server.playerList.getPlayer(p.playerUuid) ?: continue
+            val giant = GiantManager.entityOf(p.giantUuid) ?: continue
+            if (giant.isRemoved) continue
+            startBattle(player, giant)
+        }
+    }
 
     private val links = HashMap<UUID, Link>()       // battleId -> link
     private val allowedClones = HashSet<UUID>()      // clones criados por nos nesta sessao
@@ -121,6 +142,8 @@ object RaidBattles {
         val pokemon = clone.pokemon
         val maxHp = pokemon.maxHealth.coerceAtLeast(1)
         val dealt = (1.0 - pokemon.currentHealth.toDouble() / maxHp).coerceIn(0.0, 1.0)
+        // o clone desmaiou = o jogador venceu esta barra (se fugiu ou perdeu, nao continua)
+        val won = pokemon.currentHealth <= 0
 
         clone.discard()
         allowedClones.remove(clone.uuid)
@@ -136,9 +159,17 @@ object RaidBattles {
         }
 
         if (remaining > 0.0) {
+            val cfg = GigamaxConfig.data
+            val continuing = cfg.autoContinue && won
             player.sendSystemMessage(
-                Component.literal("Voce causou ${(fraction * 100).toInt()}% de dano! Vida restante do gigante: ${(remaining * 100).toInt()}%.")
+                Component.literal(
+                    "Voce causou ${(fraction * 100).toInt()}% de dano! Vida restante do gigante: ${(remaining * 100).toInt()}%." +
+                        if (continuing) " Preparando a proxima luta..." else ""
+                )
             )
+            if (continuing) {
+                pending.add(Pending(link.playerUuid, link.giantUuid, cfg.continueDelaySeconds.coerceAtLeast(1) * 20))
+            }
         }
     }
 

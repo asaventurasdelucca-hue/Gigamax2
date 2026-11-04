@@ -1,5 +1,6 @@
 package com.gigamax
 
+import net.minecraft.ChatFormatting
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
@@ -22,11 +23,16 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.item.component.ItemLore
 
 /**
- * Janela de captura (menu de bau, so no servidor: nao precisa de codigo no cliente).
- * Centro: botao [CAPTURAR]. Esquerda: Pontos Dynamax. Direita: recompensas recebidas.
+ * Janela de captura (menu de bau de 5 linhas, so no servidor: nao precisa de codigo no cliente).
+ *
+ *  borda colorida pela dificuldade
+ *  linha 2: [Pontos Dynamax]  [Especie/estrelas]  [Recompensas]
+ *  linha 3:        [ BOLA DE CAPTURA ]  <- clique para tentar
+ *  linha 4:   indicadores de tentativas (verde = disponivel, vermelho = usada)
+ *  linha 5:        [ relogio ]
  */
 class CaptureMenu(id: Int, inv: Inventory, private val box: SimpleContainer) :
-    ChestMenu(MenuType.GENERIC_9x3, id, inv, box, 3) {
+    ChestMenu(MenuType.GENERIC_9x5, id, inv, box, 5) {
 
     // Bloqueia qualquer movimentacao de itens; so o clique no botao faz algo.
     override fun clicked(slotId: Int, button: Int, clickType: ClickType, player: Player) {
@@ -64,18 +70,20 @@ class CaptureMenu(id: Int, inv: Inventory, private val box: SimpleContainer) :
 
     companion object {
         const val INFO_SLOT = 11
-        const val BUTTON_SLOT = 13
+        const val SPECIES_SLOT = 13
         const val REWARD_SLOT = 15
+        const val BUTTON_SLOT = 22
+        const val ATTEMPTS_ROW_START = 27
+        const val TIME_SLOT = 40
 
         private val PLAIN = Style.EMPTY.withItalic(false)
 
         fun open(player: ServerPlayer) {
             val info = RaidRewards.info(player) ?: return
-            val box = SimpleContainer(27)
+            val box = SimpleContainer(45)
             fill(box, info)
-            player.openMenu(
-                SimpleMenuProvider({ id, inv, _ -> CaptureMenu(id, inv, box) }, Component.literal("Captura Dynamax"))
-            )
+            val title = Component.literal("Captura Dynamax ${"★".repeat(info.stars)}").withStyle(ChatFormatting.DARK_PURPLE)
+            player.openMenu(SimpleMenuProvider({ id, inv, _ -> CaptureMenu(id, inv, box) }, title))
         }
 
         private fun stack(item: Item, name: String, lore: List<String> = emptyList()): ItemStack {
@@ -87,21 +95,36 @@ class CaptureMenu(id: Int, inv: Inventory, private val box: SimpleContainer) :
             return s
         }
 
+        private fun borderFor(stars: Int): Item = when (stars) {
+            1 -> Items.LIGHT_GRAY_STAINED_GLASS_PANE
+            2 -> Items.LIME_STAINED_GLASS_PANE
+            3 -> Items.LIGHT_BLUE_STAINED_GLASS_PANE
+            4 -> Items.PURPLE_STAINED_GLASS_PANE
+            else -> Items.ORANGE_STAINED_GLASS_PANE
+        }
+
         private fun fill(box: Container, info: RaidRewards.TicketInfo) {
-            for (i in 0 until box.containerSize) box.setItem(i, stack(Items.BLACK_STAINED_GLASS_PANE, " "))
+            val border = borderFor(info.stars)
+            for (i in 0 until box.containerSize) {
+                val row = i / 9
+                val col = i % 9
+                val isBorder = row == 0 || row == 4 || col == 0 || col == 8
+                box.setItem(i, stack(if (isBorder) border else Items.BLACK_STAINED_GLASS_PANE, " "))
+            }
 
             val species = info.species.replaceFirstChar { it.uppercase() }
+            val stars = "★".repeat(info.stars)
+
             box.setItem(
                 INFO_SLOT,
-                stack(
-                    Items.PAPER, "Pontos Dynamax: ${info.points}",
-                    listOf(
-                        "$species ${"★".repeat(info.stars)}",
-                        "Mais pontos = mais tentativas.",
-                        "Tempo restante: ${info.secondsLeft}s"
-                    )
-                )
+                stack(Items.PAPER, "Pontos Dynamax: ${info.points}", listOf("Mais pontos = mais tentativas."))
             )
+            box.setItem(
+                SPECIES_SLOT,
+                stack(Items.NAME_TAG, "$species $stars", listOf("Dificuldade: $stars"))
+            )
+            val rewardLines = info.rewards.map { (id, n) -> "${id.substringAfter(':')} x$n" }
+            box.setItem(REWARD_SLOT, stack(Items.CHEST, "Recompensas recebidas", rewardLines))
 
             val ball = BuiltInRegistries.ITEM.getOptional(ResourceLocation.parse("cobblemon:ultra_ball")).orElse(Items.ENDER_PEARL)
             box.setItem(
@@ -109,15 +132,26 @@ class CaptureMenu(id: Int, inv: Inventory, private val box: SimpleContainer) :
                 stack(
                     ball, "CAPTURAR $species",
                     listOf(
-                        "Tentativas restantes: ${info.attempts}",
                         "Chance por tentativa: ${(info.chance * 100).toInt()}%",
                         "Clique para tentar!"
                     )
                 )
             )
 
-            val rewardLines = info.rewards.map { (id, n) -> "${id.substringAfter(':')} x$n" }
-            box.setItem(REWARD_SLOT, stack(Items.CHEST, "Recompensas recebidas", rewardLines))
+            // indicadores de tentativas (ate 7), centralizados na linha 4
+            val n = info.totalAttempts.coerceIn(1, 7)
+            val used = (info.totalAttempts - info.attempts).coerceIn(0, n)
+            val startCol = (7 - n) / 2 + 1
+            for (i in 0 until n) {
+                val slot = ATTEMPTS_ROW_START + startCol + i
+                if (i < used) {
+                    box.setItem(slot, stack(Items.RED_STAINED_GLASS_PANE, "Tentativa usada"))
+                } else {
+                    box.setItem(slot, stack(Items.LIME_STAINED_GLASS_PANE, "Tentativa disponivel"))
+                }
+            }
+
+            box.setItem(TIME_SLOT, stack(Items.CLOCK, "Tempo restante: ${info.secondsLeft}s"))
         }
     }
 }
